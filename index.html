@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holie Payroll Pro - Enterprise Edition 2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --brand-primary: #0F172A; --brand-accent: #2563EB; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #F8FAFC; color: #1E293B; }
+        .sidebar-item.active { background: #EFF6FF; color: var(--brand-accent); border-right: 4px solid var(--brand-accent); }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8); }
+        .form-input {
+            width: 100%;
+            background-color: #F1F5F9;
+            border: 2px solid transparent;
+            border-radius: 1rem;
+            padding: 1rem 1.25rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .form-input:focus {
+            background-color: white;
+            border-color: #2563EB;
+            outline: none;
+            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.1);
+        }
+        
+        @media print {
+            .no-print { display: none !important; }
+            #payslip-modal { position: absolute; left: 0; top: 0; width: 100%; display: block !important; background: white; z-index: 9999; }
+            body { background: white; }
+        }
+
+        .toast {
+            position: fixed; top: 2rem; right: 2rem; z-index: 500;
+            animation: slideIn 0.3s ease-out forwards;
+        }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body class="antialiased overflow-x-hidden">
+
+    <div id="toast-container"></div>
+
+    <div id="app-view" class="flex min-h-screen overflow-hidden">
+        <aside class="w-72 bg-white border-r border-slate-200 flex flex-col no-print shrink-0">
+            <div class="p-8">
+                <div class="flex items-center space-x-3 mb-12">
+                    <div class="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white"><i class="fas fa-file-invoice-dollar text-xl"></i></div>
+                    <span class="text-xl font-extrabold tracking-tight">HoliePay<span class="text-blue-600">.</span></span>
+                </div>
+                <nav class="space-y-2">
+                    <button onclick="switchTab('dash')" id="tab-btn-dash" class="sidebar-item active w-full flex items-center space-x-4 px-6 py-4 rounded-2xl text-sm font-bold transition-all">
+                        <i class="fas fa-chart-pie"></i><span>Ringkasan</span>
+                    </button>
+                    <button onclick="switchTab('list')" id="tab-btn-list" class="sidebar-item w-full flex items-center space-x-4 px-6 py-4 rounded-2xl text-sm font-bold text-slate-400 transition-all">
+                        <i class="fas fa-users"></i><span>Data Karyawan</span>
+                    </button>
+                    <button onclick="openConfigModal()" class="sidebar-item w-full flex items-center space-x-4 px-6 py-4 rounded-2xl text-sm font-bold text-slate-400 transition-all">
+                        <i class="fas fa-cog"></i><span>Seting BPJS</span>
+                    </button>
+                </nav>
+            </div>
+            <div class="mt-auto p-8 border-t border-slate-50">
+                <button onclick="handleSignOut()" class="w-full text-left text-red-500 text-xs font-black hover:bg-red-50 p-4 rounded-xl transition-all"><i class="fas fa-power-off mr-3"></i>LOGOUT</button>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50/50">
+            <header class="h-20 bg-white border-b border-slate-100 flex items-center justify-between px-10 no-print shrink-0">
+                <h2 id="tab-title" class="font-extrabold text-slate-800 text-xl tracking-tight">Dashboard</h2>
+                <div class="flex items-center space-x-3">
+                    <label class="bg-emerald-50 text-emerald-600 px-6 py-2.5 rounded-xl text-xs font-bold border border-emerald-100 cursor-pointer hover:bg-emerald-100 transition-all flex items-center">
+                        <i class="fas fa-file-excel mr-2"></i> Import Excel
+                        <input type="file" id="excel-upload" class="hidden" accept=".xlsx, .xls">
+                    </label>
+                    <button onclick="openEmployeeModal()" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold hover:shadow-xl transition-all">+ Tambah Karyawan</button>
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto p-10">
+                <div id="view-dash" class="tab-view space-y-8">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="glass-card p-8 rounded-3xl shadow-sm">
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Karyawan</p>
+                            <h3 id="stat-count" class="text-4xl font-black text-slate-900 tracking-tighter">0</h3>
+                        </div>
+                        <div class="glass-card p-8 rounded-3xl shadow-sm bg-blue-600 text-white border-none">
+                            <p class="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1">Pengeluaran Gaji (Net)</p>
+                            <h3 id="stat-total" class="text-4xl font-black tracking-tighter">Rp 0</h3>
+                        </div>
+                        <div class="glass-card p-8 rounded-3xl shadow-sm">
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total PPh21 Terkumpul</p>
+                            <h3 id="stat-tax" class="text-4xl font-black text-red-600 tracking-tighter">Rp 0</h3>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
+                        <div class="flex flex-wrap gap-4 items-end">
+                            <div class="flex-1 min-w-[200px]">
+                                <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1">Cari Nama</label>
+                                <input type="text" id="filter-name" oninput="runFilter()" class="w-full px-4 py-2 bg-slate-50 rounded-xl border-none text-sm font-semibold" placeholder="Budi...">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1">PTKP</label>
+                                <select id="filter-ptkp" onchange="runFilter()" class="px-4 py-2 bg-slate-50 rounded-xl border-none text-sm font-semibold">
+                                    <option value="ALL">Semua</option>
+                                    <option value="TK0">TK/0</option>
+                                    <option value="K0">K/0</option>
+                                    <option value="K1">K/1</option>
+                                    <option value="K2">K/2</option>
+                                    <option value="K3">K/3</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1">Gaji Min</label>
+                                <input type="number" id="filter-min" oninput="runFilter()" class="w-32 px-4 py-2 bg-slate-50 rounded-xl border-none text-sm font-semibold" placeholder="0">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-1">Urutkan</label>
+                                <select id="filter-sort" onchange="runFilter()" class="px-4 py-2 bg-slate-50 rounded-xl border-none text-sm font-semibold">
+                                    <option value="default">Terbaru</option>
+                                    <option value="name-asc">Nama A-Z</option>
+                                    <option value="salary-desc">Gaji Terbesar</option>
+                                    <option value="tax-desc">Pajak Tertinggi</option>
+                                    <option value="netto-desc">Netto Terbesar</option>
+                                </select>
+                            </div>
+                            <button onclick="resetFilter()" class="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">Reset</button>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50/50">
+                                <tr>
+                                    <th class="p-6 text-[10px] font-black text-slate-400 uppercase">Karyawan</th>
+                                    <th class="p-6 text-[10px] font-black text-slate-400 uppercase">Bruto</th>
+                                    <th class="p-6 text-[10px] font-black text-slate-400 uppercase">PPh21 (TER)</th>
+                                    <th class="p-6 text-[10px] font-black text-slate-400 uppercase">BPJS</th>
+                                    <th class="p-6 text-[10px] font-black text-slate-400 uppercase">Netto</th>
+                                    <th class="p-6 text-[10px] font-black text-slate-400 uppercase text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dash-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="view-list" class="tab-view hidden">
+                    <div class="bg-white rounded-[32px] border border-slate-200 p-10 text-center italic text-slate-400">
+                        Pindah ke tab Ringkasan untuk manajemen data terbaru.
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL TAMBAH -->
+    <div id="employee-modal" class="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6 hidden">
+        <div class="bg-white w-full max-w-xl rounded-[40px] p-10 shadow-2xl">
+            <h3 class="text-2xl font-black text-slate-900 mb-8 tracking-tight">Input Manual</h3>
+            <div class="grid grid-cols-1 gap-6">
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-4">Nama Lengkap</label>
+                    <input type="text" id="f-name" class="form-input">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-4">Gaji Pokok</label>
+                        <input type="number" id="f-salary" class="form-input">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-4">Tunjangan</label>
+                        <input type="number" id="f-allowance" class="form-input" value="0">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-4">Status PTKP</label>
+                    <select id="f-ptkp" class="form-input">
+                        <option value="TK0">TK/0 - Tidak Kawin</option>
+                        <option value="K0">K/0 - Kawin</option>
+                        <option value="TK1">TK/1 - 1 Tanggungan</option>
+                        <option value="K1">K/1 - Kawin, 1 Tanggungan</option>
+                        <option value="K2">K/2 - Kawin, 2 Tanggungan</option>
+                        <option value="K3">K/3 - Kawin, 3 Tanggungan</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-10 flex space-x-4">
+                <button onclick="saveEmployee()" class="flex-1 bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-700 transition-all">SIMPAN DATA</button>
+                <button onclick="closeEmployeeModal()" class="px-8 bg-slate-100 text-slate-500 font-bold rounded-2xl">BATAL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIG BPJS -->
+    <div id="config-modal" class="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6 hidden">
+        <div class="bg-white w-full max-w-md rounded-[40px] p-10 shadow-2xl">
+            <div class="flex justify-between items-center mb-8">
+                <h3 class="text-2xl font-black text-slate-900 tracking-tight">Kustom BPJS</h3>
+                <div class="flex items-center space-x-2">
+                   <input type="checkbox" id="c-bpjs-active" checked class="w-6 h-6 accent-blue-600">
+                </div>
+            </div>
+            <div class="space-y-6">
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block">Pot. Kesehatan (%)</label>
+                    <input type="number" step="0.1" id="c-bpjs-kes" class="form-input" value="1.0">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block">Pot. JHT (%)</label>
+                    <input type="number" step="0.1" id="c-bpjs-jht" class="form-input" value="2.0">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block">Pot. Jaminan Pensiun (%)</label>
+                    <input type="number" step="0.1" id="c-bpjs-jp" class="form-input" value="1.0">
+                </div>
+            </div>
+            <button onclick="closeConfigModal()" class="w-full mt-10 bg-slate-900 text-white font-black py-4 rounded-2xl">TUTUP & TERAPKAN</button>
+        </div>
+    </div>
+
+    <div id="payslip-modal" class="fixed inset-0 z-[300] bg-slate-900/60 flex items-center justify-center p-6 hidden no-print">
+        <div class="bg-white w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl">
+            <div id="payslip-content" class="p-10 bg-white max-h-[85vh] overflow-y-auto"></div>
+            <div class="p-6 bg-slate-50 flex justify-end space-x-4 no-print">
+                <button onclick="closePayslip()" class="px-6 py-3 text-slate-500 font-bold">Tutup</button>
+                <button onclick="window.print()" class="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg">Print / PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, addDoc, deleteDoc, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // CONFIG FIREBASE SESUAI PERMINTAAN
+        const config = { 
+            apiKey: "AIzaSyDDsXTgZkvvaw3-Q3RBjQQG51i1VfxQIls",
+            authDomain: "payrollshsolution-app.firebaseapp.com",
+            projectId: "payrollshsolution-app",
+            storageBucket: "payrollshsolution-app.firebasestorage.app",
+            messagingSenderId: "610527777510",
+            appId: "1:610527777510:web:9731b8557fbc2a71fce127"
+        };
+
+        const app = initializeApp(config);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // State & Config
+        let employees = [];
+        let filteredData = [];
+        let bpjsConfig = { active: true, kes: 1.0, jht: 2.0, jp: 1.0 };
+        const appId = "default-payroll-2026";
+
+        // Tabel TER 2026
+        const TABLE_TER = {
+            'A': [[5400000, 0], [5650000, 0.0025], [5950000, 0.005], [6300000, 0.0075], [6750000, 0.01], [7500000, 0.0125], [8550000, 0.015], [9650000, 0.02], [10650000, 0.025], [12300000, 0.03], [15000000, 0.05], [19000000, 0.07], [25000000, 0.10]],
+            'B': [[6200000, 0], [6500000, 0.0025], [6850000, 0.005], [7300000, 0.0075], [7850000, 0.01], [8750000, 0.0125], [10000000, 0.015], [12000000, 0.02], [14050000, 0.03]],
+            'C': [[6600000, 0], [6950000, 0.0025], [7350000, 0.005], [7800000, 0.0075], [8350000, 0.01], [9450000, 0.0125], [10950000, 0.015], [12950000, 0.02]]
+        };
+
+        const getTERRate = (bruto, ptkp) => {
+            let cat = 'A';
+            if (ptkp === 'K1') cat = 'B';
+            else if (ptkp === 'K2' || ptkp === 'K3') cat = 'C';
+            const table = TABLE_TER[cat];
+            let rate = 0;
+            for (let row of table) {
+                if (bruto <= row[0]) { rate = row[1]; break; }
+                rate = 0.20; // fallback high salary
+            }
+            return { rate, category: cat };
+        };
+
+        window.calculatePayroll = (salary, allowance, ptkp) => {
+            const s = Math.max(0, parseFloat(salary) || 0);
+            const a = Math.max(0, parseFloat(allowance) || 0);
+            const bruto = s + a;
+            const { rate, category } = getTERRate(bruto, ptkp);
+            const pph21 = Math.floor(bruto * rate);
+
+            let bpjsTotal = 0;
+            const det = { kes: 0, jht: 0, jp: 0, baseKes: 0, baseJP: 0 };
+            if (bpjsConfig.active) {
+                det.baseKes = Math.min(bruto, 12000000);
+                det.kes = Math.floor(det.baseKes * (bpjsConfig.kes / 100));
+                det.jht = Math.floor(bruto * (bpjsConfig.jht / 100));
+                det.baseJP = Math.min(bruto, 10000000);
+                det.jp = Math.floor(det.baseJP * (bpjsConfig.jp / 100));
+                bpjsTotal = det.kes + det.jht + det.jp;
+            }
+            return { s, a, bruto, pph21, taxRate: rate, taxCat: category, bpjsTotal, netto: bruto - pph21 - bpjsTotal, ptkp, detailBpjs: det };
+        };
+
+        const syncData = (uid) => {
+            const coll = collection(db, 'artifacts', appId, 'users', uid, 'employees');
+            onSnapshot(coll, (snap) => {
+                employees = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                runFilter();
+            });
+        };
+
+        const init = async () => {
+            try {
+                await signInAnonymously(auth);
+                onAuthStateChanged(auth, (user) => { if (user) syncData(user.uid); });
+            } catch (e) { showToast("Koneksi Error", "error"); }
+        };
+
+        window.saveEmployee = async () => {
+            const name = document.getElementById('f-name').value;
+            const s = parseFloat(document.getElementById('f-salary').value) || 0;
+            const a = parseFloat(document.getElementById('f-allowance').value) || 0;
+            const p = document.getElementById('f-ptkp').value;
+            if (!name) return showToast("Nama wajib", "error");
+            const res = calculatePayroll(s, a, p);
+            await addDoc(collection(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'employees'), {
+                name, ...res, timestamp: serverTimestamp()
+            });
+            closeEmployeeModal();
+            showToast("Berhasil disimpan");
+        };
+
+        window.runFilter = () => {
+            const nameVal = document.getElementById('filter-name').value.toLowerCase();
+            const ptkpVal = document.getElementById('filter-ptkp').value;
+            const minVal = parseFloat(document.getElementById('filter-min').value) || 0;
+            const sortVal = document.getElementById('filter-sort').value;
+
+            filteredData = employees.filter(e => {
+                return (e.name.toLowerCase().includes(nameVal)) && (ptkpVal === 'ALL' || e.ptkp === ptkpVal) && (e.bruto >= minVal);
+            });
+
+            if (sortVal === 'name-asc') filteredData.sort((a,b) => a.name.localeCompare(b.name));
+            else if (sortVal === 'salary-desc') filteredData.sort((a,b) => b.bruto - a.bruto);
+            else if (sortVal === 'tax-desc') filteredData.sort((a,b) => b.pph21 - a.pph21);
+
+            renderUI();
+        };
+
+        window.renderUI = () => {
+            const body = document.getElementById('dash-table-body');
+            let tNet = 0, tTax = 0;
+            body.innerHTML = filteredData.map(e => {
+                tNet += e.netto; tTax += e.pph21;
+                return `
+                    <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <td class="p-6 font-bold text-slate-800">${e.name}</td>
+                        <td class="p-6">${formatRp(e.bruto)}</td>
+                        <td class="p-6 text-red-500 font-bold">${formatRp(e.pph21)} <span class="text-[9px] text-red-300">TER</span></td>
+                        <td class="p-6 text-slate-400 italic">${formatRp(e.bpjsTotal)}</td>
+                        <td class="p-6 text-blue-600 font-black">${formatRp(e.netto)}</td>
+                        <td class="p-6 text-right">
+                            <button onclick="viewSlip('${e.id}')" class="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg text-xs font-bold">SLIP</button>
+                            <button onclick="deleteEmp('${e.id}')" class="text-red-300 ml-2"><i class="fas fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            document.getElementById('stat-count').innerText = employees.length;
+            document.getElementById('stat-total').innerText = formatRp(tNet);
+            document.getElementById('stat-tax').innerText = formatRp(tTax);
+        };
+
+        // Utility
+        const formatRp = (v) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0);
+        const showToast = (m, t='success') => {
+            const el = document.createElement('div');
+            el.className = `toast p-4 rounded-xl text-white font-bold text-xs ${t==='success'?'bg-slate-900':'bg-red-500'}`;
+            el.innerText = m;
+            document.getElementById('toast-container').appendChild(el);
+            setTimeout(() => el.remove(), 3000);
+        };
+
+        window.openEmployeeModal = () => document.getElementById('employee-modal').classList.remove('hidden');
+        window.closeEmployeeModal = () => document.getElementById('employee-modal').classList.add('hidden');
+        window.openConfigModal = () => document.getElementById('config-modal').classList.remove('hidden');
+        window.closeConfigModal = () => document.getElementById('config-modal').classList.add('hidden');
+        window.closePayslip = () => document.getElementById('payslip-modal').classList.add('hidden');
+        window.deleteEmp = async (id) => { if(confirm('Hapus?')) await deleteDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'employees', id)); };
+        
+        window.viewSlip = (id) => {
+            const e = employees.find(x => x.id === id);
+            document.getElementById('payslip-content').innerHTML = `<h2 class="text-2xl font-black mb-4">SLIP GAJI - ${e.name}</h2><hr class="mb-4"><div class="space-y-2"><p>Bruto: ${formatRp(e.bruto)}</p><p>PPh21 (TER): -${formatRp(e.pph21)}</p><p>BPJS: -${formatRp(e.bpjsTotal)}</p><hr><p class="text-xl font-black">Netto: ${formatRp(e.netto)}</p></div>`;
+            document.getElementById('payslip-modal').classList.remove('hidden');
+        };
+
+        init();
+    </script>
+</body>
+</html>
